@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vedlikeholdsliste</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--text:#1d1d1b;--muted:#6b6b66;--line:#e3e1db;--accent:#2f5d8a;
+--soon-bg:#fff4d6;--soon-bd:#e0a800;--soon-tx:#7a5a00;--over-bg:#fde2e0;--over-bd:#d32f2f;--over-tx:#8f1414;
+color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#16171a;--card:#212328;--text:#ececea;--muted:#9a9a95;--line:#34363c;--accent:#7fb1e3;
+--soon-bg:#3a3012;--soon-bd:#e0a800;--soon-tx:#f3d47a;--over-bg:#4a1a19;--over-bd:#ef5350;--over-tx:#ffb4b0;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#16171a;--card:#212328;--text:#ececea;--muted:#9a9a95;--line:#34363c;--accent:#7fb1e3;
+--soon-bg:#3a3012;--soon-bd:#e0a800;--soon-tx:#f3d47a;--over-bg:#4a1a19;--over-bd:#ef5350;--over-tx:#ffb4b0;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:720px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:1.6rem;margin:8px 0 16px}
+form{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:10px;grid-template-columns:1fr 1fr}
+form .full{grid-column:1/-1}
+label{display:grid;gap:4px;font-size:.85rem;color:var(--muted)}
+input,select,button{font:inherit;color:var(--text)}
+input,select{padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);width:100%}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 12px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;padding:10px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) button.primary{color:#10202f}}
+.opts{display:flex;align-items:center;gap:8px;margin:14px 2px;font-size:.9rem;color:var(--muted)}
+.opts input{width:70px}
+ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+li{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+li .info{flex:1 1 200px;min-width:0}
+li .name{font-weight:600;overflow-wrap:anywhere}
+li .meta{font-size:.88rem;color:var(--muted)}
+li .badge{font-size:.82rem;font-weight:600;border-radius:999px;padding:3px 10px;white-space:nowrap}
+li .acts{display:flex;gap:6px}
+li.ok .badge{background:var(--bg);color:var(--muted)}
+li.soon{background:var(--soon-bg);border-left-color:var(--soon-bd)}
+li.soon .badge{background:var(--soon-bd);color:#1d1d1b}
+li.soon .meta{color:var(--soon-tx)}
+li.over{background:var(--over-bg);border-color:var(--over-bd);border-left-width:10px;animation:pulse 2s ease-in-out infinite}
+li.over .name{color:var(--over-tx)}
+li.over .meta{color:var(--over-tx)}
+li.over .badge{background:var(--over-bd);color:#fff;text-transform:uppercase;letter-spacing:.03em}
+@keyframes pulse{50%{box-shadow:0 0 0 3px color-mix(in srgb,var(--over-bd) 35%,transparent)}}
+@media (prefers-reduced-motion:reduce){li.over{animation:none}}
+.empty{text-align:center;color:var(--muted);padding:28px 0}
+</style>
+</head>
+<body>
+<main>
+<h1>Vedlikeholdsliste</h1>
+<form id="f">
+  <label class="full">Hva skal vedlikeholdes?
+    <input id="name" type="text" required maxlength="200" placeholder="F.eks. Bytte filter i ventilasjonen">
+  </label>
+  <label>Neste vedlikehold
+    <input id="date" type="date" required>
+  </label>
+  <label>Gjentas
+    <select id="rep">
+      <option value="0">Ingen gjentakelse</option>
+      <option value="1">Hver måned</option>
+      <option value="3">Hver 3. måned</option>
+      <option value="6">Hver 6. måned</option>
+      <option value="12">Hvert år</option>
+    </select>
+  </label>
+  <button class="primary full" type="submit">Legg til</button>
+</form>
+<div class="opts">Marker som «snart» når det er <input id="warn" type="number" min="1" max="365" value="14"> dager igjen eller mindre</div>
+<ul id="list"></ul>
+</main>
+<script>
+(function(){
+  var KEY="vedlikehold:v1", items=[], warn=14;
+  function load(){
+    try{
+      var raw=localStorage.getItem(KEY);
+      if(raw){var o=JSON.parse(raw); items=o.items||[]; warn=o.warn||14;}
+    }catch(e){}
+  }
+  function save(){
+    try{localStorage.setItem(KEY,JSON.stringify({items:items,warn:warn}));}catch(e){}
+  }
+  function parse(s){var p=s.split("-");return new Date(+p[0],+p[1]-1,+p[2]);}
+  function fmt(d){
+    var m=d.getMonth()+1,day=d.getDate();
+    return d.getFullYear()+"-"+(m<10?"0":"")+m+"-"+(day<10?"0":"")+day;
+  }
+  function today(){var n=new Date();return new Date(n.getFullYear(),n.getMonth(),n.getDate());}
+  function addMonths(d,n){
+    var r=new Date(d.getFullYear(),d.getMonth()+n,1);
+    var last=new Date(r.getFullYear(),r.getMonth()+1,0).getDate();
+    r.setDate(Math.min(d.getDate(),last));
+    return r;
+  }
+  function nice(s){
+    return parse(s).toLocaleDateString("nb-NO",{weekday:"short",day:"numeric",month:"long",year:"numeric"});
+  }
+  function label(days){
+    if(days<0){var a=-days;return "Forfalt for "+a+(a===1?" dag":" dager")+" siden";}
+    if(days===0)return "I dag";
+    if(days===1)return "I morgen";
+    return "Om "+days+" dager";
+  }
+  function repText(n){
+    return {1:"hver måned",3:"hver 3. måned",6:"hver 6. måned",12:"hvert år"}[n]||"";
+  }
+  function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
+
+  function render(){
+    var ul=document.getElementById("list");
+    ul.textContent="";
+    if(!items.length){ul.appendChild(el("li","empty","Ingen oppføringer ennå. Legg til den første over."));ul.lastChild.style.display="block";return;}
+    var t=today();
+    items.slice().sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:0;}).forEach(function(it){
+      var days=Math.round((parse(it.date)-t)/864e5);
+      var cls=days<0?"over":days<=warn?"soon":"ok";
+      var li=el("li",cls);
+      var info=el("div","info");
+      info.appendChild(el("div","name",it.name));
+      var meta=nice(it.date)+(it.rep?" · gjentas "+repText(it.rep):"");
+      info.appendChild(el("div","meta",meta));
+      li.appendChild(info);
+      li.appendChild(el("span","badge",label(days)));
+      var acts=el("div","acts");
+      var done=el("button",null,it.rep?"Utført":"Utført (fjern)");
+      done.onclick=function(){
+        if(it.rep){it.date=fmt(addMonths(today(),it.rep));}
+        else{items=items.filter(function(x){return x.id!==it.id;});}
+        save();render();
+      };
+      var del=el("button",null,"Slett");
+      del.setAttribute("aria-label","Slett "+it.name);
+      del.onclick=function(){
+        if(confirm("Slette «"+it.name+"»?")){items=items.filter(function(x){return x.id!==it.id;});save();render();}
+      };
+      acts.appendChild(done);acts.appendChild(del);
+      li.appendChild(acts);
+      ul.appendChild(li);
+    });
+  }
+
+  document.getElementById("f").addEventListener("submit",function(e){
+    e.preventDefault();
+    var n=document.getElementById("name"),d=document.getElementById("date"),r=document.getElementById("rep");
+    if(!n.value.trim()||!d.value)return;
+    items.push({id:Date.now()+""+Math.random().toString(36).slice(2,6),name:n.value.trim(),date:d.value,rep:+r.value});
+    save();render();
+    n.value="";n.focus();
+  });
+  var w=document.getElementById("warn");
+  w.addEventListener("input",function(){var v=parseInt(w.value,10);if(v>0){warn=v;save();render();}});
+
+  load();
+  w.value=warn;
+  document.getElementById("date").value=fmt(today());
+  render();
+})();
+</script>
+</body>
+</html>
